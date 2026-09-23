@@ -1,0 +1,76 @@
+# Manual, non-production validation. Supply an approved native Windows ARM64
+# pool; no such pool is currently declared in templates/variables.yml.
+trigger: none
+pr: none
+
+parameters:
+- name: windowsArm64Pool
+  displayName: Approved native Windows ARM64 pool (required)
+  type: string
+- name: buildMsi
+  displayName: Also compile the unsigned ARM64 MSI (no installation)
+  type: boolean
+  default: false
+
+jobs:
+- job: ValidateWindowsARM64
+  displayName: Native Windows ARM64 validation - not production release
+  timeoutInMinutes: 90
+  pool:
+    name: ${{ parameters.windowsArm64Pool }}
+    demands:
+    - Agent.OS -equals Windows_NT
+    - Agent.OSArchitecture -equals ARM64
+  strategy:
+    matrix:
+      ZIP:
+        PackageTarget: zip
+      ${{ if parameters.buildMsi }}:
+        MSI:
+          PackageTarget: msi
+  steps:
+  - checkout: self
+  - powershell: |
+      $ErrorActionPreference = 'Stop'
+      if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64' -and $env:PROCESSOR_ARCHITEW6432 -ne 'ARM64') {
+          throw 'A native Windows ARM64 agent is required; emulated x64 validation is insufficient.'
+      }
+      $versionLine = Select-String -Path src\azure-cli\azure\cli\__main__.py -Pattern '^__version__ = "([^"]+)"$'
+      if (-not $versionLine) { throw 'Unable to extract CLI version.' }
+      $version = $versionLine.Matches[0].Groups[1].Value
+      New-Item -ItemType Directory -Force "$(Build.ArtifactStagingDirectory)\metadata" | Out-Null
+      Set-Content "$(Build.ArtifactStagingDirectory)\metadata\version" $version
+      Write-Host "##vso[task.setvariable variable=CLI_VERSION]$version"
+    displayName: Validate host and extract version
+  - script: |
+      call build_scripts\windows\scripts\build.cmd
+    env:
+      ARCH: arm64
+      TARGET: $(PackageTarget)
+      CLI_VERSION: $(CLI_VERSION)
+    displayName: Build with official pinned native dependencies (fail if unavailable)
+  - powershell: |
+      $ErrorActionPreference = 'Stop'
+      $python = 'build_scripts\windows\artifacts\cli\python.exe'
+      & $python -I build_scripts\windows\tests\test_windows_packaging.py
+      if ($LASTEXITCODE -ne 0) { throw 'Packaging regression tests failed.' }
+      & $python -I build_scripts\windows\tests\test_msi_architecture.py
+      if ($LASTEXITCODE -ne 0) { throw 'MSI definition tests failed.' }
+      & $python -I build_scripts\windows\tests\test_upgrade_architecture.py
+      if ($LASTEXITCODE -ne 0) { throw 'Upgrade architecture tests failed.' }
+      New-Item -ItemType Directory -Force "$(Build.ArtifactStagingDirectory)\zip" | Out-Null
+      if ('$(PackageTarget)' -eq 'zip') {
+          Copy-Item 'build_scripts\windows\out\Microsoft Azure CLI arm64.zip' "$(Build.ArtifactStagingDirectory)\zip"
+      }
+    displayName: Check package definitions and stage ZIP
+  - task: PowerShell@2
+    condition: and(succeeded(), eq(variables['PackageTarget'], 'zip'))
+    displayName: Test extracted ZIP, native dependencies, and extension installation
+    inputs:
+      filePath: build_scripts\windows\scripts\test_zip_installation.ps1
+      arguments: -Architecture arm64
+  - task: PublishPipelineArtifact@1
+    displayName: Retain validated unsigned candidate (not for publication)
+    inputs:
+      targetPath: build_scripts/windows/out
+      artifact: windows-arm64-$(PackageTarget)-validation-only

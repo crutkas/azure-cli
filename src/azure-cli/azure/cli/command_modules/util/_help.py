@@ -55,4 +55,8 @@ short-summary: Show the versions of Azure CLI modules and extensions in JSON for
 helps['upgrade'] = """
 type: command
 short-summary: Upgrade Azure CLI and extensions
+long-summary: >
+    Automatic upgrade is not supported for native Windows ARM64 MSI/ZIP installations until a production ARM64
+    upgrade package is available. Keep the current installation or install a supported x64/x86 distribution separately.
+    This restriction does not apply to x64/x86 Azure CLI running under emulation on Windows ARM64.
 """

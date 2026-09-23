@@ -8,6 +8,10 @@
   <?define ProductAuthor = "Microsoft Corporation" ?>
   <?define ProductResources = ".\resources\" ?>
   <?define UpgradeCode32 = "dff82af0-3f95-4ac9-8efd-948604fdb028" ?>
+  <?define UpgradeCode64 = "90762fec-9554-4729-a107-c6a8ea316698" ?>
+  <?define UpgradeCodeArm64 = "a26a9a9e-7e9a-4a41-bf5a-54cd57a028f8" ?>
+  <?define InstallerVersion = "200" ?>
+  <?define Win64 = "yes" ?>
 
   <?if $(var.Platform) = "x64" ?>
   <?define AzureCliRegistryGuid = "90b6367e-4e15-4313-af33-a0ef459a56fc" ?>
@@ -16,8 +20,20 @@
   <?define ProgramFilesFolder = "ProgramFiles64Folder" ?>
   <?define RemoveAzureCLIFolderGuid = "7ce8a521-7429-4ded-9cce-0948e393cc83" ?>
   <?define RemoveCLIFolderGuid = "59fb416c-91d0-49aa-a185-d4330c435a93" ?>
-  <?define UpgradeCode = "90762fec-9554-4729-a107-c6a8ea316698" ?>
+  <?define UpgradeCode = $(var.UpgradeCode64) ?>
   <?define Architecture = "64-bit" ?>
+
+  <?elseif $(var.Platform) = "arm64" ?>
+  <?define AzureCliRegistryGuid = "91a3f252-b019-4432-a3a3-67933fb0efde" ?>
+  <?define AzureCliSystemPathGuid = "d1bc9b8f-cc0d-48a9-a446-8b285a68c35b" ?>
+  <?define AzureCliVersionGuid = "a6b93be4-6bc5-4f47-8407-1ab77e6b2c7e" ?>
+  <?define ProgramFilesFolder = "ProgramFiles64Folder" ?>
+  <?define RemoveAzureCLIFolderGuid = "4fb7ca75-cd26-42b9-9d72-732c30797c76" ?>
+  <?define RemoveCLIFolderGuid = "93247e52-2c28-4bd2-8200-e2c9420d56ad" ?>
+  <?define UpgradeCode = $(var.UpgradeCodeArm64) ?>
+  <?define Architecture = "ARM64" ?>
+  <?undef InstallerVersion ?>
+  <?define InstallerVersion = "500" ?>
 
   <?elseif $(var.Platform) = "x86" ?>
   <?define AzureCliRegistryGuid = "BDEEE50E-70D3-4990-BFF9-FCF8114AA701" ?>
@@ -28,6 +44,8 @@
   <?define RemoveCLIFolderGuid = "24DA394D-B03D-4623-A0D9-852DB51EF9F4" ?>
   <?define UpgradeCode = $(var.UpgradeCode32) ?>
   <?define Architecture = "32-bit" ?>
+  <?undef Win64 ?>
+  <?define Win64 = "no" ?>
 
   <?else ?>
   <?error Unsupported platform "$(var.Platform)" ?>
@@ -40,7 +58,7 @@
            Manufacturer="$(var.ProductAuthor)"
            UpgradeCode="$(var.UpgradeCode)">
 
-    <Package InstallerVersion="200"
+    <Package InstallerVersion="$(var.InstallerVersion)"
              Compressed="yes"
              InstallScope="perMachine" />
 
@@ -53,8 +71,8 @@
       <RemoveExistingProducts Before="InstallInitialize" />
     </InstallExecuteSequence>
 
-    <!-- New product architectures should upgrade the original x86 product - even of the same version. -->
-    <?if $(var.UpgradeCode) != $(var.UpgradeCode32) ?>
+    <!-- Preserve the existing x86-to-x64 migration only. ARM64 never removes another architecture. -->
+    <?if $(var.Platform) = "x64" ?>
     <Upgrade Id="$(var.UpgradeCode32)">
       <UpgradeVersion Property="WIX_X86_UPGRADE_DETECTED" Maximum="$(var.ProductVersion)" IncludeMaximum="yes" MigrateFeatures="yes" />
       <UpgradeVersion Property="WIX_X86_DOWNGRADE_DETECTED" Minimum="$(var.ProductVersion)" IncludeMinimum="no" OnlyDetect="yes" />
@@ -62,6 +80,22 @@
     <Condition Message="A newer version of $(var.ProductName) is already installed.">NOT (WIX_DOWNGRADE_DETECTED OR WIX_X86_DOWNGRADE_DETECTED)</Condition>
     <?else ?>
     <Condition Message="A newer version of $(var.ProductName) is already installed.">NOT WIX_DOWNGRADE_DETECTED</Condition>
+    <?endif ?>
+
+    <!-- No upper version bound: even a newer other-architecture MSI must block installation. -->
+    <?if $(var.Platform) = "arm64" ?>
+    <Upgrade Id="$(var.UpgradeCode32)">
+      <UpgradeVersion Property="AZURECLI_X86_INSTALLED" Minimum="0.0.0" IncludeMinimum="yes" OnlyDetect="yes" />
+    </Upgrade>
+    <Upgrade Id="$(var.UpgradeCode64)">
+      <UpgradeVersion Property="AZURECLI_X64_INSTALLED" Minimum="0.0.0" IncludeMinimum="yes" OnlyDetect="yes" />
+    </Upgrade>
+    <Condition Message="Uninstall the existing x86 or x64 Microsoft Azure CLI manually before installing the ARM64 edition.">Installed OR NOT (AZURECLI_X86_INSTALLED OR AZURECLI_X64_INSTALLED)</Condition>
+    <?else ?>
+    <Upgrade Id="$(var.UpgradeCodeArm64)">
+      <UpgradeVersion Property="AZURECLI_ARM64_INSTALLED" Minimum="0.0.0" IncludeMinimum="yes" OnlyDetect="yes" />
+    </Upgrade>
+    <Condition Message="Uninstall the existing ARM64 Microsoft Azure CLI manually before installing another architecture.">Installed OR NOT AZURECLI_ARM64_INSTALLED</Condition>
     <?endif ?>
 
     <Media Id="1" Cabinet="WindowsAzureCLI.cab" EmbedCab="yes" CompressionLevel="high" />
@@ -87,7 +121,11 @@
     </Feature>
 
     <!--Custom action to propagate path env variable change-->
+    <?if $(var.Platform) = "arm64" ?>
+    <CustomActionRef Id="WixBroadcastEnvironmentChange_A64" />
+    <?else ?>
     <CustomActionRef Id="WixBroadcastEnvironmentChange" />
+    <?endif ?>
 
     <!-- User Interface -->
     <WixVariable Id="WixUILicenseRtf" Value="$(var.ProductResources)CLI_LICENSE.rtf"/>
@@ -110,10 +148,17 @@
       <Directory Id="$(var.ProgramFilesFolder)">
         <Directory Id="SDKFOLDER" Name="Microsoft SDKs">
           <Directory Id="AZUREFOLDER" Name="Azure">
+            <?if $(var.Platform) = "arm64" ?>
+            <Directory Id="AZURECLIFOLDER" Name="CLI2" ComponentGuidGenerationSeed="bf2f6ec9-467d-4865-a20f-cfd619e358ec">
+              <Directory Id="DynamicCliDir"/>
+              <Directory Id="BIN" Name="Bin" />
+            </Directory>
+            <?else ?>
             <Directory Id="AZURECLIFOLDER" Name="CLI2">
               <Directory Id="DynamicCliDir"/>
               <Directory Id="BIN" Name="Bin" />
             </Directory>
+            <?endif ?>
           </Directory>
         </Directory>
       </Directory>
@@ -123,16 +168,19 @@
   <Fragment>
     <ComponentGroup Id="AzureCliSettingsGroup">
       <Component Id="RemoveCLIFolder"
+                 Win64="$(var.Win64)"
                  Directory="DynamicCliDir"
                  Guid="$(var.RemoveCLIFolderGuid)">
         <RemoveFolder Id="DynamicCliDir" On="uninstall" />
       </Component>
       <Component Id="RemoveAzureCLIFolder"
+                 Win64="$(var.Win64)"
                  Directory="AZURECLIFOLDER"
                  Guid="$(var.RemoveAzureCLIFolderGuid)">
         <RemoveFolder Id="AZURECLIFOLDER" On="uninstall" />
       </Component>
       <Component Id="AzureCliSystemPath"
+                 Win64="$(var.Win64)"
                  Directory="DynamicCliDir"
                  Guid="$(var.AzureCliSystemPathGuid)">
         <Environment Id="AzureCliAddedToPATH"
@@ -145,6 +193,7 @@
         <CreateFolder />
       </Component>
       <Component Id="AzureCliRegistry"
+                 Win64="$(var.Win64)"
                  Directory="DynamicCliDir"
                  Guid="$(var.AzureCliRegistryGuid)">
         <RegistryValue Root="HKCU"
@@ -155,6 +204,7 @@
                        KeyPath="yes"/>
       </Component>
       <Component Id="AzureCliVersion"
+                 Win64="$(var.Win64)"
                  Directory="DynamicCliDir"
                  Guid="$(var.AzureCliVersionGuid)">
         <RegistryValue Root="HKLM"

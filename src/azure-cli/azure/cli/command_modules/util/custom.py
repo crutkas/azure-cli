@@ -42,9 +42,14 @@ def upgrade_version(cmd, update_all=None, yes=None, allow_preview=None):  # pyli
     import platform
     import sys
     import subprocess
+    from azure.cli.core._environment import _ENV_AZ_INSTALLER
+
+    installer = (os.getenv(_ENV_AZ_INSTALLER) or '').upper()
+    if installer in ('MSI', 'ZIP'):
+        _check_windows_upgrade_architecture()
+
     from azure.cli.core import telemetry
     from azure.cli.core import __version__ as local_version
-    from azure.cli.core._environment import _ENV_AZ_INSTALLER
     from azure.cli.core.extension import get_extensions, WheelExtension
     from packaging.version import parse
 
@@ -64,8 +69,6 @@ def upgrade_version(cmd, update_all=None, yes=None, allow_preview=None):  # pyli
     exts = [ext.name for ext in get_extensions(ext_type=WheelExtension)] if update_all else []
 
     exit_code = 0
-    installer = os.getenv(_ENV_AZ_INSTALLER) or ''
-    installer = installer.upper()
     if update_cli:
         latest_version_msg = 'It will be updated to {}.'.format(latest_version) if yes \
             else 'Latest version available is {}.'.format(latest_version)
@@ -206,11 +209,26 @@ def upgrade_version(cmd, update_all=None, yes=None, allow_preview=None):  # pyli
     logger.warning("Upgrade finished.")
 
 
+def _check_windows_upgrade_architecture():
+    import sysconfig
+
+    # Use the interpreter target, not the host CPU: x86/x64 Python can run on an ARM64 host.
+    if sysconfig.get_platform().lower() == 'win-arm64':
+        from azure.cli.core.azclierror import UnclassifiedUserFault
+        raise UnclassifiedUserFault(
+            "Automatic upgrade is not supported for native Windows ARM64 MSI/ZIP installations. "
+            "A production ARM64 upgrade package is not available.",
+            "Keep the current installation until a supported ARM64 release is available, or install a supported "
+            "x64/x86 Azure CLI distribution separately. See https://aka.ms/doc/InstallAzureCli")
+
+
 def _upgrade_on_windows():
     """Download MSI to a temp folder and install it with msiexec.exe.
     Directly installing from URL may be blocked by policy: https://github.com/Azure/azure-cli/issues/19171
     This also gives the user a chance to manually install the MSI in case of msiexec.exe failure.
     """
+    _check_windows_upgrade_architecture()
+
     import platform
     import subprocess
     import sys

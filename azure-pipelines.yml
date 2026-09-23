@@ -186,6 +186,15 @@ jobs:
     inputs:
       versionSpec: '3.14'
 
+  - script: |
+      python -I build_scripts\windows\tests\test_windows_packaging.py
+      if errorlevel 1 exit /b 1
+      python -I build_scripts\windows\tests\test_msi_architecture.py
+      if errorlevel 1 exit /b 1
+      python -I build_scripts\windows\tests\test_upgrade_architecture.py
+      if errorlevel 1 exit /b 1
+    displayName: 'Verify Windows packaging architecture policy'
+
   - task: BatchScript@1
     inputs:
       filename: ./scripts/ci/dependency_check.bat

@@ -96,6 +96,7 @@ azure-synapse-accesscontrol==0.5.0
 azure-synapse-artifacts==0.22.0
 azure-synapse-managedprivateendpoints==0.4.0
 azure-synapse-spark==0.7.0
+# ARM64 packaging explicitly selects bcrypt==5.0.0; platform_machine also reports ARM64 under x86/x64 emulation.
 bcrypt==3.2.0
 certifi==2024.7.4
 cffi==2.0.0
@@ -120,6 +121,7 @@ paramiko==5.0.0
 pbr==7.0.3
 pkginfo==1.12.1.2
 portalocker==3.2.0
+# ARM64 packaging explicitly selects psutil==7.2.2; retain the default pin because 7.2.2 has no win32 wheel.
 psutil==6.1.0
 pycomposefile==0.0.34
 PyGithub==1.55

@@ -2,6 +2,23 @@
 
 Baseline: `6cd38278b625b845433864dd0454c0d362350bf2`.
 
+## Fork synchronization and review base
+
+On 2026-09-24, both `Azure/azure-cli:main` and `crutkas/azure-cli:main`
+pointed to `dc50d475a00ded4a1a1980d4a10a9fbd9a750a81`. The previously reported
+63 commits were the difference between that release-oriented `main` and the
+original development baseline above, **not a fork that was 63 commits stale**.
+
+The fork's `dev` was genuinely three commits behind upstream `dev` and was
+fast-forwarded from `c6fd0ecb5302dc285f7382b8ff147a5e476f6319` to
+`9a3432d5ce7ebcbc5473b994897ab16ae998878b`. That upstream development revision
+was merged into the ARM64 feature branch without rewriting its published
+history. Fork `main` remains unchanged and tracks upstream `main`.
+
+The clean ARM64 review comparison is against fork `dev`; a comparison against
+fork `main` includes unrelated upstream development changes. No PR base is
+silently changed: the fork-only `dev` comparison is a preview, not an opened PR.
+
 The first deliverable is a native CPython 3.14 Windows ARM64 ZIP. MSI support
 follows, without changing existing x86/x64 artifacts. This is implementation
 work, not an announcement of supported production ARM64 distributions.
